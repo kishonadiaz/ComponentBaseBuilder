@@ -80,7 +80,23 @@ dependencies {
     implementation("com.yourname:meta-spatial-component-builder:VERSION")
 }
 ```
+```install
+To intall you  jitpack 
+Add it in your settings.gradle.kts at the end of repositories:
+dependencyResolutionManagement {
+		repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+		repositories {
+			mavenCentral()
+			maven { url = uri("https://jitpack.io") }
+		}
+}
 
+then in your dependency
+dependencies {
+	        implementation("com.github.kishonadiaz:ComponentBaseBuilder:1.0.2")
+	}
+
+```
 ---
 
 # Basic Example
