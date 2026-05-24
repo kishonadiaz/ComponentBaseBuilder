@@ -182,6 +182,14 @@ class AvatarStats : ComponentBaseBuilder {
 Once built, the component behaves like a normal Meta Spatial component.
 
 ```kotlin
+
+val entity = Entity.create(
+    Mesh("mesh://box".toUri()),
+    Transfrom(Pose()),
+    AvatarStats(entity = playerEntity, health = 100, mana = 75f)
+)
+
+or
 val stats = AvatarStats(
     entity = playerEntity,
     health = 100,
@@ -189,11 +197,23 @@ val stats = AvatarStats(
 )
 
 playerEntity.setComponent(stats)
+
+or
+playerEntity.setComponent(AvatarStats(entity = playerEntity, health = 100, mana = 75f))
+
 ```
 
 Access values normally:
 
 ```kotlin
+var avatarData = entity.tryGetComponenet<AvatarStats>()
+var mana = avatarData?.get<Float>("mana")!!
+//If created in custom Component you can
+var health:Int = avatarData?.health 
+var player = avatarData["playerEntity"]!!
+
+or 
+// If you called it on its own
 val health: Int? = stats["health"]
 val mana: Float? = stats["mana"]
 ```
