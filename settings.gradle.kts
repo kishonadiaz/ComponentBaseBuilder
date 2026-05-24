@@ -1,3 +1,4 @@
+
 pluginManagement {
   repositories {
     mavenCentral()
@@ -17,7 +18,8 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "ComponentBaseBuilder"
 
-include(":app")
+
+
+rootProject.name = "ComponentBaseBuilder"
 include(":ComponentBaseBuilder")

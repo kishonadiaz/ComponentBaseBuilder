@@ -33,13 +33,13 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
-    publishing {
-        singleVariant("release")
-    }
     kotlin {
         jvmToolchain(17)
     }
+    publishing {
+        singleVariant("release")
+    }
+
 }
 
 dependencies {
@@ -72,8 +72,8 @@ afterEvaluate {
                 from(components["release"])
 
                 groupId = "com.digiforce"
-                artifactId = "meta-spatial-componentbase-builder"
-                version = "1.0.0"
+                artifactId = "componentbase-builder"
+                version = "1.0.2"
             }
         }
     }
