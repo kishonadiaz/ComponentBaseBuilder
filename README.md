@@ -81,8 +81,10 @@ dependencies {
 }
 ```
 ```install
+```
 [![](https://jitpack.io/v/kishonadiaz/ComponentBaseBuilder.svg)](https://jitpack.io/#kishonadiaz/ComponentBaseBuilder)
 
+```
 To intall you  jitpack 
 Add it in your settings.gradle.kts at the end of repositories:
 dependencyResolutionManagement {
