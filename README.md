@@ -125,12 +125,14 @@ class AvatarStats : ComponentBaseBuilder {
 
         currentid = id
     }
-    
+
     //Three ways to call the data for later usage 
     var thisEntity: Entity?
-        get()= this["entity"] as Entity?
-        set(value){this["entity"] = value!!}
-    var health:Int by `
+        get() = this["entity"] as Entity?
+        set(value) {
+            this["entity"] = value!!
+        }
+    var health : Float by ComponentField("heath",0.0f)
 
     override fun typeID(): Int {
         return id
