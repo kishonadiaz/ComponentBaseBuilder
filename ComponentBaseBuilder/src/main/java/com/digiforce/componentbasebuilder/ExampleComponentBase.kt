@@ -31,9 +31,9 @@ class ExampleComponentBase : ComponentBaseBuilder {
          * if you don't the default parameters will be passed and won't update can can put as many attributes as you
          * make
          * */
-        named = name
-        floatvalue = f1
-        vectorvalue = vector
+//        named = name
+//        floatvalue = f1
+//        vectorvalue = vector
 
         /**
          * this is where you place your addAttribute functions after the calls to the Companion variables place as many that you want to show in your Entity to use
@@ -82,9 +82,9 @@ class ExampleComponentBase : ComponentBaseBuilder {
         /**
          * you need to place these here these vaibles will be used to initialize the attributes
          * */
-        var named:String = "tested"
-        var floatvalue:Float = 0.0f
-        var vectorvalue:Vector3 = Vector3(0f,0f,0f)
+//        var named:String = "tested"
+//        var floatvalue:Float = 0.0f
+//        var vectorvalue:Vector3 = Vector3(0f,0f,0f)
 
         /**
          * you have to set theses as mutableListOf to these make it look like this don't use getter and setter it won't work.
@@ -99,7 +99,8 @@ class ExampleComponentBase : ComponentBaseBuilder {
          * you need this will need to look like this you must pass in your current class in the lambda with the vars
          * */
 
-        override val createDefaultInstance: () -> ComponentBase = { ExampleComponentBase(named,floatvalue,vectorvalue) }
+        override val createDefaultInstance: () -> ComponentBase = { componentBaseBuilder!! }
+        override var componentBaseBuilder: ComponentBaseBuilder? = ExampleComponentBase()
 
         /**
          * set you id like this don't use Random numbers it won't show up

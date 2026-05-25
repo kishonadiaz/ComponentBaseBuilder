@@ -160,10 +160,10 @@ open class ComponentBaseBuilder: ComponentHelper {
 
     fun buildDynamic(): ComponentCompanionHelper {
 
-        val target = componentBaseBuilder.companion()
+        val target = componentBaseBuilder?.companion()
 
         val targetCache =
-            classCache.getOrPut(target::class.java) {
+            classCache.getOrPut(target!!::class.java) {
 
                 target::class.memberProperties
                     .mapNotNull {
@@ -172,10 +172,10 @@ open class ComponentBaseBuilder: ComponentHelper {
                     .associateBy { it.name }
             }
 
-        for (prop in componentBaseBuilder.companion()::class.memberProperties) {
+        for (prop in componentBaseBuilder?.companion()!!::class.memberProperties) {
 
             val value = runCatching {
-                prop.getter.call(componentBaseBuilder.companion())
+                prop.getter.call(componentBaseBuilder?.companion())
             }.getOrNull()
 
             val targetProp = targetCache[prop.name]
@@ -185,11 +185,11 @@ open class ComponentBaseBuilder: ComponentHelper {
             }
         }
 
-        return target.componentBaseBuilder.companion()
+        return target.componentBaseBuilder?.companion()!!
     }
     var propertyCache: Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>
         get() = ComponentHelper.Companion.classCache.getOrPut(this::class.java) {
-            ComponentBaseBuilder.Companion.componentBaseBuilder::class.memberProperties
+            ComponentBaseBuilder.Companion.componentBaseBuilder!!::class.memberProperties
                 .mapNotNull { it as? KMutableProperty1<ComponentCompanionHelper, Any?> }
                 .associateBy { it.name }
         }
@@ -198,11 +198,11 @@ open class ComponentBaseBuilder: ComponentHelper {
         }
 
     fun getV(attr: String): Any? {
-        return propertyCache[attr]?.get(ComponentBaseBuilder.Companion.componentBaseBuilder.companion())
+        return propertyCache[attr]?.get(ComponentBaseBuilder.Companion.componentBaseBuilder?.companion()!!)
     }
 
     fun setv(attr: String, value: Any?) {
-        propertyCache[attr]?.set(ComponentBaseBuilder.Companion.componentBaseBuilder.companion(), value)
+        propertyCache[attr]?.set(ComponentBaseBuilder.Companion.componentBaseBuilder?.companion()!!, value)
     }
 
     companion object : ComponentCompanionHelper {
@@ -242,8 +242,8 @@ open class ComponentBaseBuilder: ComponentHelper {
             return if (idx >= 0) idx else null
         }
 
-        override var createDefaultInstance: () -> ComponentBase ={ ComponentBaseBuilder() }
-        override var componentBaseBuilder: ComponentBaseBuilder = ComponentBaseBuilder()
+        override var createDefaultInstance: () -> ComponentBase ={ componentBaseBuilder!! }
+        override var componentBaseBuilder: ComponentBaseBuilder? = ComponentBaseBuilder()
         override var propertyCache: Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>
             get() = ComponentHelper.Companion.classCache.getOrPut(this::class.java) {
                 this::class.memberProperties
@@ -255,11 +255,11 @@ open class ComponentBaseBuilder: ComponentHelper {
             }
 
         override fun get(attr: String): Any? {
-            return propertyCache[attr]?.get(ComponentBaseBuilder.Companion.componentBaseBuilder.companion())
+            return propertyCache[attr]?.get(ComponentBaseBuilder.Companion.componentBaseBuilder?.companion()!!)
         }
 
         override fun set(attr: String, value: Any?) {
-            propertyCache[attr]?.set(ComponentBaseBuilder.Companion.componentBaseBuilder.companion(), value)
+            propertyCache[attr]?.set(ComponentBaseBuilder.Companion.componentBaseBuilder?.companion()!!, value)
         }
 
 
@@ -601,23 +601,23 @@ public  interface ComponentCompanionHelper : ComponentCompanion{
 
     abstract override val createDefaultInstance: () -> ComponentBase
 
-    var componentBaseBuilder: ComponentBaseBuilder
+    var componentBaseBuilder: ComponentBaseBuilder?
     var propertyCache: Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>
         get() = classCache.getOrPut(ComponentCompanionHelper::class.java) {
-            componentBaseBuilder.companion()::class.memberProperties
+            componentBaseBuilder?.companion()!!::class.memberProperties
                 .mapNotNull { it as? KMutableProperty1<ComponentCompanionHelper, Any?> }
                 .associateBy { it.name }
         }
         set(value) {
-            classCache[componentBaseBuilder::class.java] = value
+            classCache[componentBaseBuilder!!::class.java] = value
         }
 
     fun get(attr: String): Any? {
-        return componentBaseBuilder.propertyCache[attr]?.get(componentBaseBuilder.companion())
+        return componentBaseBuilder?.propertyCache[attr]?.get(componentBaseBuilder?.companion()!!)
     }
 
     fun set(attr: String, value: Any?) {
-        componentBaseBuilder.propertyCache[attr]?.set(componentBaseBuilder.companion(), value)
+        componentBaseBuilder?.propertyCache[attr]?.set(componentBaseBuilder?.companion()!!, value)
     }
 
 
