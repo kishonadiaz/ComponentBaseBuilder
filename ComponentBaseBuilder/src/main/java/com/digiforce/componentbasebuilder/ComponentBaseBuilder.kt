@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.digiforce.componentbasebuilder.ComponentBaseBuilder.Companion.attributeTypesList
 import com.digiforce.componentbasebuilder.ComponentBaseBuilder.Companion.currentid
+import com.digiforce.componentbasebuilder.ComponentHelper.Companion.classCache
 import com.meta.spatial.core.AbstractAttribute
 import com.meta.spatial.core.BooleanAttribute
 import com.meta.spatial.core.ComponentBase
@@ -29,7 +30,9 @@ import com.meta.spatial.core.Vector4Attribute
 import com.meta.spatial.toolkit.AppSystemActivity
 import com.meta.spatial.toolkit.SpatialActivityManager
 import java.util.UUID
+import kotlin.reflect.KMutableProperty1
 import kotlin.reflect.KProperty
+import kotlin.reflect.full.memberProperties
 
 /**
  * @constructor AttributeCreator used to create the AbstractAttribute
@@ -118,6 +121,7 @@ open class ComponentBaseBuilder: ComponentHelper {
 
     }
     constructor(initAttribute:Int=0,callback:(thiss: ComponentBaseBuilder)-> Unit = {}):super(){
+        buildDynamic()
         callback(this)
         currentid = id
     }
@@ -137,7 +141,7 @@ open class ComponentBaseBuilder: ComponentHelper {
             component.companion().attributeTypesList.add(0)
 
         }
-
+        companion().componentBaseBuilder = component
     }
 
     open fun checker(identifier:String="test") {
@@ -153,6 +157,53 @@ open class ComponentBaseBuilder: ComponentHelper {
     }
 
     override fun companion(): ComponentCompanionHelper = Companion
+
+    fun buildDynamic(): ComponentCompanionHelper {
+
+        val target = componentBaseBuilder.companion()
+
+        val targetCache =
+            classCache.getOrPut(target::class.java) {
+
+                target::class.memberProperties
+                    .mapNotNull {
+                        it as? KMutableProperty1<ComponentCompanionHelper, Any?>
+                    }
+                    .associateBy { it.name }
+            }
+
+        for (prop in componentBaseBuilder.companion()::class.memberProperties) {
+
+            val value = runCatching {
+                prop.getter.call(componentBaseBuilder.companion())
+            }.getOrNull()
+
+            val targetProp = targetCache[prop.name]
+
+            runCatching {
+                targetProp?.set(target, value)
+            }
+        }
+
+        return target.componentBaseBuilder.companion()
+    }
+    var propertyCache: Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>
+        get() = ComponentHelper.Companion.classCache.getOrPut(this::class.java) {
+            ComponentBaseBuilder.Companion.componentBaseBuilder::class.memberProperties
+                .mapNotNull { it as? KMutableProperty1<ComponentCompanionHelper, Any?> }
+                .associateBy { it.name }
+        }
+        set(value) {
+            ComponentHelper.Companion.classCache[this::class.java] = value
+        }
+
+    fun getV(attr: String): Any? {
+        return propertyCache[attr]?.get(ComponentBaseBuilder.Companion.componentBaseBuilder.companion())
+    }
+
+    fun setv(attr: String, value: Any?) {
+        propertyCache[attr]?.set(ComponentBaseBuilder.Companion.componentBaseBuilder.companion(), value)
+    }
 
     companion object : ComponentCompanionHelper {
 
@@ -192,6 +243,24 @@ open class ComponentBaseBuilder: ComponentHelper {
         }
 
         override var createDefaultInstance: () -> ComponentBase ={ ComponentBaseBuilder() }
+        override var componentBaseBuilder: ComponentBaseBuilder = ComponentBaseBuilder()
+        override var propertyCache: Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>
+            get() = ComponentHelper.Companion.classCache.getOrPut(this::class.java) {
+                this::class.memberProperties
+                    .mapNotNull { it as? KMutableProperty1<ComponentCompanionHelper, Any?> }
+                    .associateBy { it.name }
+            }
+            set(value) {
+                ComponentHelper.Companion.classCache[this::class.java] = value
+            }
+
+        override fun get(attr: String): Any? {
+            return propertyCache[attr]?.get(ComponentBaseBuilder.Companion.componentBaseBuilder.companion())
+        }
+
+        override fun set(attr: String, value: Any?) {
+            propertyCache[attr]?.set(ComponentBaseBuilder.Companion.componentBaseBuilder.companion(), value)
+        }
 
 
     }
@@ -279,6 +348,59 @@ public abstract class ComponentHelper : ComponentBase {
         }
     }
 
+    fun  fromValue(from: Any?,toString: Class<*>): Any?{
+
+
+        return when (from) {
+
+            is Float -> from as Float
+
+            is Int -> from as Int
+
+            is Boolean -> {
+                if (from == true && toString is String) {
+                    "true"
+                }
+                else if (from == false && toString is String){
+                    "false"
+                }
+                else {
+                    if (from == "true" && toString is Boolean) {
+                        true
+                    } else if (from == "false" && toString is Boolean) {
+                        false
+                    } else {
+                        false
+                    }
+                }
+            }
+
+            is String -> {
+                return (if(from == "true"){true} else if(from == "false"){false} else{
+                    from as String
+                }) as Any
+            }
+
+            is Vector2 -> from as Vector2
+
+            is Vector3 -> from as Vector3
+
+            is Vector4 -> from as Vector4
+
+            is Entity -> from as Entity
+
+            is Pose -> from as Pose
+
+            is UUID -> from as UUID
+
+            is Uri -> from as Uri
+
+            is Long -> from as Long
+
+            else -> from
+        } as Any
+    }
+
     /**
      * This function is used to create the attribute of the Component Base and has to be called in an init{} or a constructor
      * @param name is a String that you used to name the attribute and set ro rhe component
@@ -289,10 +411,18 @@ public abstract class ComponentHelper : ComponentBase {
      * */
     open fun <T> addAttribute(name: String, value: T?, component: ComponentBaseBuilder, atthelper: AttributeHelper){
 
+        var data = value
+        var atthelper = atthelper
+        if (atthelper== AttributeHelper.BOOLEANATTRIBUTE){
+            atthelper= AttributeHelper.STRINGATTRIBUTE
+            if(data is Boolean){
+                data = ((if(data == true){"true"}else{"false"}) as T?)
+            }
+        }
 
         @Suppress("UNCHECKED_CAST")
         component.buildAttribute<T>(
-            name, value as? T?,
+            name, data as? T?,
             component,atthelper.creator as AttributeCreator
         )
 
@@ -305,18 +435,36 @@ public abstract class ComponentHelper : ComponentBase {
     open operator fun <T> get(key: String): T? {
         val comp = companion() as ComponentCompanionHelper
         val index = comp.keyStringToKeyIntMap(key) ?: return null
-        return getComponentDataValue(index) as? T
+        var data  = getComponentDataValue(index) as? T
+
+
+        if(data is String){
+            if(data == "true"){
+                data = true as T?
+            }else if(data ==  "false"){
+                data = false as T?
+            }
+        }
+        return data
     }
-    operator fun set(key: String, value: Any) {
-        val comp = ComponentBaseBuilder.Companion as ComponentCompanionHelper
+    operator fun <T> set(key: String, value: T?) {
+        val comp = companion() as ComponentCompanionHelper
         val index = comp.keyStringToKeyIntMap(key) ?: return
-        setComponentDataValue(index, value)
+        var data = value
+        if(data is Boolean){
+            if(data == true){
+                data = "true" as T?
+            }else{
+                data = "false" as T?
+            }
+        }
+        setComponentDataValue(index, data!!)
     }
     protected open fun <T> buildAttribute(name:String, value:Any?, component: ComponentBaseBuilder, creator: (Int, ComponentBase, Int, Any) -> AbstractAttribute, terminator: Boolean=false){
         component.addAtt<T>(currentid!!, component, creator)
         component.companion().attributeNamesList.add(name)
         component.currentBuild.add(component.attributesMap[currentid]!!(component.attributeKeyCounter,component,component.attributeKeyCounter,value!!))
-        setComponentDataValue(component.attributeKeyCounter,value)
+        component.setComponentDataValue(component.attributeKeyCounter,value)
 
         val insertPos =component.companion().attributeNamesList.size-1
 
@@ -393,6 +541,10 @@ public abstract class ComponentHelper : ComponentBase {
         }
     }
 
+    companion object{
+        var classCache = mutableMapOf<Class<*>, Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>>()
+    }
+
     abstract override fun companion(): ComponentCompanionHelper
 
     fun showExample(component: ComponentBaseBuilder){
@@ -449,7 +601,24 @@ public  interface ComponentCompanionHelper : ComponentCompanion{
 
     abstract override val createDefaultInstance: () -> ComponentBase
 
+    var componentBaseBuilder: ComponentBaseBuilder
+    var propertyCache: Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>
+        get() = classCache.getOrPut(ComponentCompanionHelper::class.java) {
+            componentBaseBuilder.companion()::class.memberProperties
+                .mapNotNull { it as? KMutableProperty1<ComponentCompanionHelper, Any?> }
+                .associateBy { it.name }
+        }
+        set(value) {
+            classCache[componentBaseBuilder::class.java] = value
+        }
 
+    fun get(attr: String): Any? {
+        return componentBaseBuilder.propertyCache[attr]?.get(componentBaseBuilder.companion())
+    }
+
+    fun set(attr: String, value: Any?) {
+        componentBaseBuilder.propertyCache[attr]?.set(componentBaseBuilder.companion(), value)
+    }
 
 
 }

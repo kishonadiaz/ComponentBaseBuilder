@@ -49,6 +49,7 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    implementation(kotlin("reflect"))
 
     implementation(libs.meta.spatial.sdk.base)
     implementation(libs.meta.spatial.sdk.ovrmetrics)
@@ -73,7 +74,7 @@ afterEvaluate {
 
                 groupId = "com.digiforce"
                 artifactId = "componentbase-builder"
-                version = "1.0.2"
+                version = "1.0.3"
             }
         }
     }
