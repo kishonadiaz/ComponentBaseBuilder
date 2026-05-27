@@ -114,6 +114,7 @@ data class AttributeData<T>(
 * */
 open class ComponentBaseBuilder: ComponentHelper {
 
+    override fun typeID(): Int = id
     override var initAttribute: Int = 5
 
     init {
@@ -133,7 +134,7 @@ open class ComponentBaseBuilder: ComponentHelper {
     }
 
     constructor():super(){
-
+        initLayout(this.initAttribute)
     }
     constructor(initAttribute:Int=0,callback:(thiss: ComponentBaseBuilder)-> Unit = {}):super(){
         buildDynamic()
@@ -425,7 +426,7 @@ public abstract class ComponentHelper : ComponentBase {
      * @param atthelper is a call to the AttributeHelper.STRINGATTRIBUTE, etc.
      * @sample showExample
      * */
-    open fun <T> addAttribute(name: String, value: T?, component: ComponentBaseBuilder, atthelper: AttributeHelper){
+    open fun <T> addAttribute(name: String, value: T?, component: ComponentBaseBuilder, atthelper: AttributeHelper,terminator: Boolean =false){
 
         var data = value
         var currentHelper = atthelper
@@ -443,18 +444,22 @@ public abstract class ComponentHelper : ComponentBase {
                 data = ((if(data == 1){true}else{false} as T?
                         ))
             }
-        }
+        }else
         if(currentHelper == AttributeHelper.OBJECTATTRIBUTE){
             data = component.pack(name, value) as T? // pack returns String
             gsons[name] = data as String
             currentHelper = AttributeHelper.STRINGATTRIBUTE // Store as String
+        }else if(currentHelper == AttributeHelper.INTATTRIBUTE){
+            if(data is Boolean){
+                data = ((if(data == true){1}else{0} as T?))
+            }
         }
 
         @Suppress("UNCHECKED_CAST")
         component.buildAttribute<T>(
             name, data as? T?,
-            component,currentHelper.creator as AttributeCreator
-        )
+            component,currentHelper.creator as AttributeCreator,atthelper ,terminator)
+
 
         component.listOfAttribute.add(currentid)
 
@@ -570,11 +575,12 @@ public abstract class ComponentHelper : ComponentBase {
         }else
             setComponentDataValue(index, data!!)
     }
-    protected open fun <T> buildAttribute(name:String, value:Any?, component: ComponentBaseBuilder, creator: (Int, ComponentBase, Int, Any) -> AbstractAttribute, terminator: Boolean=false){
+    open fun <T> buildAttribute(name:String, value:Any?, component: ComponentBaseBuilder, creator: (Int, ComponentBase, Int, Any) -> AbstractAttribute, atthelper:AttributeHelper, terminator: Boolean=false){
+
         component.addAtt<T>(currentid!!, component, creator)
         component.companion().attributeNamesList.add(name)
         component.currentBuild.add(component.attributesMap[currentid]!!(component.attributeKeyCounter,component,component.attributeKeyCounter,value!!))
-        component.setComponentDataValue(component.attributeKeyCounter,value)
+        component.setComponentDataValue(name,value)
 
         val insertPos =component.companion().attributeNamesList.size-1
 
@@ -655,16 +661,23 @@ public abstract class ComponentHelper : ComponentBase {
         var classCache = mutableMapOf<Class<*>, Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>>()
         var gsons: MutableMap<String, String> = mutableMapOf()
         var objects: MutableMap<String, Any?> = mutableMapOf()
-        private val defaultGson: Gson = AlteraGson.Builder()
-            .autoDetectPackage(false) // <- KEY FIX
-            .skipSdkPackage(false)    // <- KEY FIX
-            .skipMetaPackage(true)    // <- Keep this
-            .useAnnotations(true)
-            .build()
+        private val defaultGson: Gson = AlteraGson.default
+
+//        private val defaultGson: Gson = AlteraGson.Builder()
+//            .autoDetectPackage(false) // <- KEY FIX
+//            .skipSdkPackage(false)    // <- KEY FIX
+//            .skipMetaPackage(true)    // <- Keep this
+//            .useAnnotations(true)
+//            .build()
+//        private val defaultGson: Gson = AlteraGson.Builder()
+//            .autoDetectPackage(false) // <- KEY FIX
+//            .skipSdkPackage(false)    // <- KEY FIX
+//            .skipMetaPackage(true)    // <- Keep this
+//            .useAnnotations(true)
+//            .build()
         private var customGson: Gson? = null
         fun setGson(gson: Gson) { customGson = gson }
-        fun getGson(): Gson = customGson
-            ?: defaultGson
+        fun getGson(): Gson = customGson ?: defaultGson
 //        val gson: Gson = GsonBuilder()
 //            .setExclusionStrategies(object : com.google.gson.ExclusionStrategy {
 //                override fun shouldSkipField(f: FieldAttributes): Boolean {
@@ -765,8 +778,13 @@ open class ComponentField<T>(private val key: String, private val default: T) {
         thisRef[key] = value
     }
 }
-
-@Target(AnnotationTarget.CLASS, AnnotationTarget.FIELD)
+@Retention(AnnotationRetention.SOURCE)
+@Target(AnnotationTarget.CLASS,
+    AnnotationTarget.PROPERTY_GETTER,
+    AnnotationTarget.ANNOTATION_CLASS,
+    AnnotationTarget.PROPERTY_SETTER,
+    AnnotationTarget.FUNCTION,
+    AnnotationTarget.LOCAL_VARIABLE ,AnnotationTarget.FIELD, AnnotationTarget.PROPERTY, AnnotationTarget.EXPRESSION)
 annotation class AlteraIgnore
 
 @AlteraIgnore
@@ -847,7 +865,7 @@ class UniversalTypeAdapterFactory : TypeAdapterFactory {
 // ADAPTER NOW TAKES Class<*> SO IT KNOWS T
 object AlteraGson {
     // HARDCODE YOUR JITPACK PACKAGE - NEVER AUTO-DETECT
-    private const val SDK_PACKAGE: String = "com.digiforce.altera.sdk" // <- CHANGE THIS TO YOUR REAL JITPACK ID
+    public var SDK_PACKAGE: String = "com.digiforce.componentbasebuilder" // <- CHANGE THIS TO YOUR REAL JITPACK ID
 
     class Builder {
         private var skipSdkPackage = true
