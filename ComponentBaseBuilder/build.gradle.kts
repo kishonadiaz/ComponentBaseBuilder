@@ -50,6 +50,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     implementation(kotlin("reflect"))
+    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("org.jetbrains.kotlin:kotlin-reflect:2.1.0")
 
     implementation(libs.meta.spatial.sdk.base)
     implementation(libs.meta.spatial.sdk.ovrmetrics)

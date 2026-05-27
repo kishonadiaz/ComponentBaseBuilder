@@ -53,7 +53,7 @@ class ExampleComponentBase : ComponentBaseBuilder {
      * this is where you place your getters and setters here there are 3 ways to create then these 3 here are the 3 ways to create them
      * */
     var name: String
-        get() = this["name"]?:""
+        get() = (this["name"]?:"") as String
         set(value) { this["name"] = value}
 
     var f1 : Float by ComponentField("f1",0.0f)
