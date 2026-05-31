@@ -2,7 +2,11 @@ package com.digiforce.componentbasebuilder
 
 
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.digiforce.componentbasebuilder.ComponentBaseBuilder.Companion.attributeTypesList
 import com.digiforce.componentbasebuilder.ComponentBaseBuilder.Companion.currentid
 import com.digiforce.componentbasebuilder.ComponentHelper.Companion.classCache
@@ -26,6 +30,7 @@ import com.meta.spatial.core.IntAttribute
 import com.meta.spatial.core.LongAttribute
 import com.meta.spatial.core.Pose
 import com.meta.spatial.core.PoseAttribute
+import com.meta.spatial.core.Query
 import com.meta.spatial.core.RegisteredAttributeType
 import com.meta.spatial.core.StringAttribute
 import com.meta.spatial.core.URIAttribute
@@ -53,6 +58,22 @@ import kotlin.reflect.jvm.isAccessible
  * */
 typealias AttributeCreator =
             (Int, ComponentBase, Int, Any) -> AbstractAttribute
+
+interface EntityAware {
+    fun bind(entity: Entity)
+}
+
+fun Entity.Companion.create(components: List<ComponentBase> ): Entity {
+    val entity = this.create(components)
+    components.filterIsInstance<EntityAware>().forEach { it.bind(entity) }
+    return entity
+}
+fun Entity.Companion.create(vararg components: ComponentBase ): Entity {
+    val entity = this.create(components.toMutableList())
+    components.filterIsInstance<EntityAware>().forEach { it.bind(entity) }
+    return entity
+}
+
 
 /**
  *@property AttributeHelper this enum is used to identify and set the AbstractAttribute
@@ -112,10 +133,15 @@ data class AttributeData<T>(
  * @property companion is an override function needed to set the ComponentCompanionHelper to this class
  * @sample ExampleComponentBase
 * */
-open class ComponentBaseBuilder: ComponentHelper {
+open class ComponentBaseBuilder: ComponentHelper, EntityAware {
 
     override fun typeID(): Int = id
     override var initAttribute: Int = 5
+
+    var pp: Entity = Entity.nullEntity()
+    open  var parentEntity: Entity = Entity(0)
+        set
+    override fun bind(entity: Entity) { parentEntity = entity }
 
     init {
         currentid = id
@@ -165,6 +191,43 @@ open class ComponentBaseBuilder: ComponentHelper {
                     " ${attributeNames().toMutableList()} : " +
                     "${attributeKeys().toMutableList()}:" +
                     "${attributeTypeCounts().toMutableList()}")
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    inline fun <reified T : ComponentBaseBuilder> bindParent(component: T){
+
+        var tt = Thread{
+            val query = Query.where { has(component.companion().id) }
+
+            for (entity in query.eval()) {
+                var ti = entity.hasComponent<T>()
+                if(ti){
+                    var t = entity.tryGetComponent<T>() as ComponentBaseBuilder
+
+                    if(t.companion().birth == component.companion().birth){
+                        component.parentEntity = entity
+                        pp = entity
+
+
+                        break
+                    }
+                }
+
+
+                // Process each matching entity found in the scene
+            }
+        }
+        Handler.createAsync(Looper.getMainLooper()).postDelayed({
+
+            tt.start()
+
+        },1)
+
+        Handler.createAsync(Looper.getMainLooper()).postDelayed({
+            tt.join()
+
+        },1)
+
     }
 
     public inline fun <reified T : ComponentBase> register(componentBase: ComponentCompanion){
@@ -427,7 +490,7 @@ public abstract class ComponentHelper : ComponentBase {
      * @sample showExample
      * */
     open fun <T> addAttribute(name: String, value: T?, component: ComponentBaseBuilder, atthelper: AttributeHelper,terminator: Boolean =false){
-
+        var isEntitySet = false
         var data = value
         var currentHelper = atthelper
 
@@ -446,6 +509,7 @@ public abstract class ComponentHelper : ComponentBase {
             }
         }else
         if(currentHelper == AttributeHelper.OBJECTATTRIBUTE){
+            objects[name] = data
             data = component.pack(name, value) as T? // pack returns String
             gsons[name] = data as String
             currentHelper = AttributeHelper.STRINGATTRIBUTE // Store as String
@@ -453,8 +517,20 @@ public abstract class ComponentHelper : ComponentBase {
             if(data is Boolean){
                 data = ((if(data == true){1}else{0} as T?))
             }
+        }else if(currentHelper == AttributeHelper.ENTITYATTRIBUTE){
+            if((data as Entity).id.toInt() != 0){
+                @Suppress("UNCHECKED_CAST")
+                component.buildAttribute<T>(
+                    name, data as? T?,
+                    component,currentHelper.creator as AttributeCreator,atthelper ,terminator)
+
+                isEntitySet = true
+
+            }
+//                log("FLOW ${data}")
         }
 
+        if(isEntitySet) return
         @Suppress("UNCHECKED_CAST")
         component.buildAttribute<T>(
             name, data as? T?,
@@ -510,16 +586,22 @@ public abstract class ComponentHelper : ComponentBase {
 
     inline fun <reified T> unpack(key: String): T? {
         val json = this[key] as? String
+
+        if(objects.keys.contains(key)) return  objects[key] as T?
+
         if (json.isNullOrEmpty()) return null
+
+        json as  String
+
         return runCatching {
             getGson().fromJson(json, T::class.java) // Uses T, not Any
         }.getOrNull()
     }
 
-    open operator fun get(key:String): Any{
-        return get<Any?>(key)!!
+    open operator fun get(key:String,clazz: Class<*> = Class::class.java): Any{
+        return get<Any?, Any?>(key,clazz)!!
     }
-    inline operator fun <reified T> get(vararg datas:Any?): T? {
+    inline operator fun <reified T:Any?, reified K:Any?> get(vararg datas:Any?): K? {
         var key = datas[0] as? String ?: return null
 
         val comp = companion() as ComponentCompanionHelper
@@ -533,8 +615,8 @@ public abstract class ComponentHelper : ComponentBase {
                 data = false as T?
             }
         }
-        if(objects.keys.contains(key)) return objects[key] as T?
-        return data
+        if(objects.keys.contains(key)) return objects[key] as K?
+        return data as K?
     }
     fun checkObject(any:Any): Boolean{
         return when(any){
@@ -744,6 +826,9 @@ public  interface ComponentCompanionHelper : ComponentCompanion{
 
         return if (idx >= 0) idx else -1
     }
+    var birth: Long
+        get() = System.currentTimeMillis()
+        set(value) = TODO()
 
     abstract override val createDefaultInstance: () -> ComponentBase
 
@@ -865,7 +950,7 @@ class UniversalTypeAdapterFactory : TypeAdapterFactory {
 // ADAPTER NOW TAKES Class<*> SO IT KNOWS T
 object AlteraGson {
     // HARDCODE YOUR JITPACK PACKAGE - NEVER AUTO-DETECT
-    public var SDK_PACKAGE: String = "com.digiforce.componentbasebuilder" // <- CHANGE THIS TO YOUR REAL JITPACK ID
+    var SDK_PACKAGE: String = "com.digiforce.componentbasebuilder" // <- CHANGE THIS TO YOUR REAL JITPACK ID
 
     class Builder {
         private var skipSdkPackage = true

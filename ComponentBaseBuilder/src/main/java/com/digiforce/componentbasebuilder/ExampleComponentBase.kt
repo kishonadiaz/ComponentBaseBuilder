@@ -12,7 +12,7 @@ import com.meta.spatial.core.Vector3
  * @receiver this class inherits from ComponentBaseBuilder
  *
  */
-class ExampleComponentBase : ComponentBaseBuilder {
+class ExampleComponentBase : ComponentBaseBuilder, EntityAware {
     /**
      * @param any create your params as you normally would create a class contractor use params that will be relevant to your needs
      * @property register Registers this class is in and is needed
@@ -43,10 +43,16 @@ class ExampleComponentBase : ComponentBaseBuilder {
         this.addAttribute("f1",f1,this, AttributeHelper.FLOATATTRIBUTE)
         this.addAttribute("vector",vector,this, AttributeHelper.VECTOR3ATTRIBUTE)
 
+
         /**
          * place your currentid = id here this tells the code which current componentBase is being built
          * */
         currentid = id
+
+        /**
+         * To get Parent Entity Awareness After the Entity is created place bindParent here adding component this in the param for the component to bind to
+        * */
+        bindParent(this)
 
     }
     /**
