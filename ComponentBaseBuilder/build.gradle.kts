@@ -76,7 +76,7 @@ afterEvaluate {
 
                 groupId = "com.digiforce"
                 artifactId = "componentbase-builder"
-                version = "1.0.7"
+                version = "1.0.8"
             }
         }
     }

@@ -196,6 +196,7 @@ open class ComponentBaseBuilder: ComponentHelper, EntityAware {
     @RequiresApi(Build.VERSION_CODES.P)
     inline fun <reified T : ComponentBaseBuilder> bindParent(component: T){
 
+        if(component.companion() == null) return
         var tt = Thread{
             val query = Query.where { has(component.companion().id) }
 
