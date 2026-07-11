@@ -77,7 +77,7 @@ repositories {
 
 ```kotlin
 dependencies {
-    implementation("com.yourname:meta-spatial-component-builder:VERSION")
+    implementation("com.github.kishonadiaz:ComponentBaseBuilder:VERSION")
 }
 ```
 ```install
@@ -97,7 +97,7 @@ dependencyResolutionManagement {
 
 then in your dependency
 dependencies {
-	        implementation("com.github.kishonadiaz:ComponentBaseBuilder:1.0.2")
+	        implementation("com.github.kishonadiaz:ComponentBaseBuilder:VERSION")
 	}
 
 ```
