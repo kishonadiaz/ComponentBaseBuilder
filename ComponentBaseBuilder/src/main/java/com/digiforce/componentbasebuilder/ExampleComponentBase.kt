@@ -81,6 +81,14 @@ class ExampleComponentBase : ComponentBaseBuilder, EntityAware {
     override fun companion(): ComponentCompanionHelper = Companion
 
     /**
+     *
+     * You have to make sure you have this in your code without it the component wont show up
+    * */
+    override fun typeID(): Int {
+        return id
+    }
+
+    /**
      * this is where you need the companion object and set it to ComponentCompanionHelper this is need to make this run
      * */
     companion object: ComponentCompanionHelper{
