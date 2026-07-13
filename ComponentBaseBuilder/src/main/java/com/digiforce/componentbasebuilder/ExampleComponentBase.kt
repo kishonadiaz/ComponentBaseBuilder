@@ -12,7 +12,7 @@ import com.meta.spatial.core.Vector3
  * @receiver this class inherits from ComponentBaseBuilder
  *
  */
-class ExampleComponentBase : ComponentBaseBuilder, EntityAware {
+class ExampleComponentBase : ComponentBaseBuilder {
     /**
      * @param any create your params as you normally would create a class contractor use params that will be relevant to your needs
      * @property register Registers this class is in and is needed
