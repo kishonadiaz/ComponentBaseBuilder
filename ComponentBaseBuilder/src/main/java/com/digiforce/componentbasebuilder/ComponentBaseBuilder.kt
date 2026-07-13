@@ -133,15 +133,15 @@ data class AttributeData<T>(
  * @property companion is an override function needed to set the ComponentCompanionHelper to this class
  * @sample ExampleComponentBase
 * */
-open class ComponentBaseBuilder: ComponentHelper, EntityAware {
+open class ComponentBaseBuilder: ComponentHelper {
 
     override fun typeID(): Int = id
     override var initAttribute: Int = 5
 
     var pp: Entity = Entity.nullEntity()
     open  var parentEntity: Entity = Entity(0)
-        set
-    override fun bind(entity: Entity) { parentEntity = entity }
+//        set
+//    override fun bind(entity: Entity) { parentEntity = entity }
 
     init {
         currentid = id
