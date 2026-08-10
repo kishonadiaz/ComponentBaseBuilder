@@ -889,7 +889,7 @@ class UniversalReflectionAdapter(private val gson: Gson, private val type: Class
                 val propValue = prop.getter.call(value)?: continue
                 out.name(prop.name)
                 gson.toJson(propValue, propValue.javaClass, out)
-            } catch (e: Exception) { continue }
+            } catch (e: Throwable) { continue }
         }
         out.endObject()
     }
