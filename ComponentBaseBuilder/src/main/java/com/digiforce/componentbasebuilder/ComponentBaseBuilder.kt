@@ -1,6 +1,9 @@
 package com.digiforce.componentbasebuilder
 
-
+import com.google.gson.JsonElement
+import java.util.IdentityHashMap
+import java.util.concurrent.Executor
+import kotlin.reflect.jvm.javaType
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -577,13 +580,25 @@ public abstract class ComponentHelper : ComponentBase {
     }
 
 
-
-    fun pack(key: String, value: Any?) : String {
-        val json = getGson().toJson(value)
-        if (value == null) { this[key] = ""; return "" }
-        this[key] = json// Universal adapter handles it
-        return  json
+//
+//    fun pack(key: String, value: Any?) : String {
+//        val json = getGson().toJson(value)
+//        if (value == null) { this[key] = ""; return "" }
+//        this[key] = json// Universal adapter handles it
+//        return  json
+//    }
+fun pack(key: String, value: Any?): String {
+    if (value == null) {
+        this[key] = ""
+        return ""
     }
+    val json = runCatching { getGson().toJson(value) }
+        .onFailure { Log.w("ComponentBaseBuilder", "pack('$key') failed: ${it.message}", it) }
+        .getOrDefault("")
+
+    this[key] = json
+    return json
+}
 
     inline fun <reified T> unpack(key: String): T? {
         val json = this[key] as? String
@@ -741,9 +756,13 @@ public abstract class ComponentHelper : ComponentBase {
     }
 
     companion object{
-        var classCache = mutableMapOf<Class<*>, Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>>()
-        var gsons: MutableMap<String, String> = mutableMapOf()
-        var objects: MutableMap<String, Any?> = mutableMapOf()
+//        var classCache = mutableMapOf<Class<*>, Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>>()
+//        var gsons: MutableMap<String, String> = mutableMapOf()
+//        var objects: MutableMap<String, Any?> = mutableMapOf()
+ var classCache = java.util.concurrent.ConcurrentHashMap<Class<*>, Map<String, KMutableProperty1<ComponentCompanionHelper, Any?>>>()
+ var gsons: MutableMap<String, String> = java.util.concurrent.ConcurrentHashMap()
+ var objects: MutableMap<String, Any?> = java.util.Collections.synchronizedMap(HashMap())
+
         private val defaultGson: Gson = AlteraGson.default
 
 //        private val defaultGson: Gson = AlteraGson.Builder()
@@ -864,39 +883,152 @@ open class ComponentField<T>(private val key: String, private val default: T) {
         thisRef[key] = value
     }
 }
-@Retention(AnnotationRetention.SOURCE)
-@Target(AnnotationTarget.CLASS,
+//@Retention(AnnotationRetention.SOURCE)
+@Retention(AnnotationRetention.RUNTIME)
+@Target(
+    AnnotationTarget.CLASS,
     AnnotationTarget.PROPERTY_GETTER,
     AnnotationTarget.ANNOTATION_CLASS,
     AnnotationTarget.PROPERTY_SETTER,
     AnnotationTarget.FUNCTION,
-    AnnotationTarget.LOCAL_VARIABLE ,AnnotationTarget.FIELD, AnnotationTarget.PROPERTY, AnnotationTarget.EXPRESSION)
+    AnnotationTarget.FIELD,
+    AnnotationTarget.PROPERTY
+)
 annotation class AlteraIgnore
-
 @AlteraIgnore
-class UniversalReflectionAdapter(private val gson: Gson, private val type: Class<*>) : TypeAdapter<Any>() {
+class UniversalReflectionAdapter(
+    private val gson: Gson,
+    private val type: Class<*>
+) : TypeAdapter<Any>() {
 
-    override fun write(out: JsonWriter, value: Any?) {
-        if (value == null) { out.nullValue(); return }
+    companion object {
+        private const val TAG = "UniversalReflection"
 
-        out.beginObject()
-        out.name("@type").value(value::class.java.name)
+        /** Guards against cycles (AiComponent -> BasePet -> Entity -> AiComponent ...). */
+        private const val MAX_DEPTH = 12
 
-        for (prop in value::class.memberProperties) {
-            try {
-                if (prop.name == "Companion" || prop.name == "propertyCache") continue
-                prop.isAccessible = true
-                val propValue = prop.getter.call(value)?: continue
-                out.name(prop.name)
-                gson.toJson(propValue, propValue.javaClass, out)
-            } catch (e: Throwable) { continue }
+        @RequiresApi(Build.VERSION_CODES.O)
+        private val inFlight = ThreadLocal.withInitial { IdentityHashMap<Any, Boolean>() }
+
+        private val SKIPPED_PROPERTY_NAMES = setOf(
+            "Companion", "propertyCache", "classCache", "componentBaseBuilder"
+        )
+
+        /**
+         * Types that must never be walked reflectively. Serializing an Executor drags in
+         * its worker Threads, their ThreadGroups, ClassLoaders and queued Runnables — which
+         * is exactly what produced the "Dangling name: executor" crash.
+         *
+         * Add your own with [addSkippedPackage] at app start.
+         */
+        private val SKIPPED_PACKAGES = mutableListOf(
+            "java.util.concurrent",
+            "java.lang.ref",
+            "java.lang.invoke",
+            "java.io",
+            "java.nio",
+            "java.net",
+            "java.security",
+            "android.os",
+            "android.app",
+            "android.content",
+            "android.view",
+            "android.widget",
+            "androidx.",
+            "kotlin.coroutines",
+            "kotlinx.coroutines",
+            "kotlin.jvm.functions",
+            "dalvik.system"
+        )
+
+        @JvmStatic
+        fun addSkippedPackage(prefix: String) {
+            synchronized(SKIPPED_PACKAGES) { SKIPPED_PACKAGES.add(prefix) }
         }
-        out.endObject()
+
+        /** True when a value of this type should be dropped rather than serialized. */
+        @JvmStatic
+        fun isUnserializable(cls: Class<*>): Boolean {
+            if (cls.isAnnotationPresent(AlteraIgnore::class.java)) return true
+            if (Executor::class.java.isAssignableFrom(cls)) return true
+            if (Thread::class.java.isAssignableFrom(cls)) return true
+            if (ThreadGroup::class.java.isAssignableFrom(cls)) return true
+            if (ClassLoader::class.java.isAssignableFrom(cls)) return true
+            if (Class::class.java.isAssignableFrom(cls)) return true
+            if (java.io.Closeable::class.java.isAssignableFrom(cls)) return true
+            if (cls.isSynthetic || cls.isAnonymousClass) return true
+
+            val name = cls.name
+            // Lambdas / synthetic function objects have no useful state
+            if (name.contains("\$\$Lambda") || name.contains("\$\$ExternalSynthetic")) return true
+
+            val packages = synchronized(SKIPPED_PACKAGES) { SKIPPED_PACKAGES.toList() }
+            return packages.any { name.startsWith(it) }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun write(out: JsonWriter, value: Any?) {
+        if (value == null) {
+            out.nullValue()
+            return
+        }
+
+        val visiting = inFlight.get()
+        // Cycle or runaway depth: emit null instead of recursing forever.
+        if (visiting.containsKey(value) || visiting.size >= MAX_DEPTH) {
+            out.nullValue()
+            return
+        }
+        visiting[value] = true
+
+        try {
+            out.beginObject()
+            out.name("@type").value(value::class.java.name)
+
+            val props = runCatching { value::class.memberProperties }
+                .onFailure { Log.w(TAG, "memberProperties failed for ${value::class.java.name}: ${it.message}") }
+                .getOrNull()
+                .orEmpty()
+
+            for (prop in props) {
+                if (prop.name in SKIPPED_PROPERTY_NAMES) continue
+                // Extension properties / properties needing arguments can't be read from an instance
+                if (prop.parameters.size > 1) continue
+
+                // ---- THE FIX -------------------------------------------------------
+                // Build the value into a detached JsonElement FIRST. If anything throws,
+                // the failure is contained in the tree writer and `out` is untouched, so
+                // we can never leave a deferred name hanging.
+                val element: JsonElement? = runCatching {
+                    prop.isAccessible = true
+                    val propValue = prop.getter.call(value) ?: return@runCatching null
+                    if (isUnserializable(propValue.javaClass)) return@runCatching null
+                    gson.toJsonTree(propValue, propValue.javaClass)
+                }.getOrElse {
+                    Log.d(TAG, "skipping ${value::class.java.simpleName}.${prop.name}: ${it.message}")
+                    null
+                }
+
+                if (element == null || element.isJsonNull) continue
+
+                out.name(prop.name)   // name is written ONLY once a value is guaranteed
+                gson.toJson(element, out)
+                // --------------------------------------------------------------------
+            }
+
+            out.endObject()
+        } finally {
+            visiting.remove(value)
+            if (visiting.isEmpty()) inFlight.remove()
+        }
     }
 
     override fun read(reader: JsonReader): Any? {
-        val jsonObj = gson.fromJson<JsonObject>(reader, JsonObject::class.java)
-        val className = jsonObj.get("@type")?.asString ?: type.name // Fallback to known type
+        val jsonObj = runCatching { gson.fromJson<JsonObject>(reader, JsonObject::class.java) }
+            .getOrNull() ?: return null
+
+        val className = jsonObj.get("@type")?.asString ?: type.name
 
         return runCatching {
             val kClass = Class.forName(className).kotlin
@@ -904,49 +1036,142 @@ class UniversalReflectionAdapter(private val gson: Gson, private val type: Class
 
             jsonObj.entrySet().forEach { (propName, jsonElement) ->
                 if (propName == "@type") return@forEach
+                if (jsonElement == null || jsonElement.isJsonNull) return@forEach
+
+                @Suppress("UNCHECKED_CAST")
                 val prop = kClass.memberProperties.find { it.name == propName }
-                        as? KMutableProperty1<Any, Any?>
-                prop?.isAccessible = true
-                val propType = prop?.returnType?.classifier as? KClass<*>
-                val propValue = gson.fromJson(jsonElement, propType?.java)
-                prop?.set(instance, propValue)
+                        as? KMutableProperty1<Any, Any?> ?: return@forEach
+
+                runCatching {
+                    prop.isAccessible = true
+                    // javaType keeps generic args (List<Foo> stays List<Foo>, not List<Any>)
+                    val propValue = gson.fromJson<Any?>(jsonElement, prop.returnType.javaType)
+                    prop.set(instance, propValue)
+                }
             }
             instance
         }.getOrNull()
     }
 }
 
+//@AlteraIgnore
+//class UniversalReflectionAdapter(private val gson: Gson, private val type: Class<*>) : TypeAdapter<Any>() {
+//
+//    override fun write(out: JsonWriter, value: Any?) {
+//        if (value == null) { out.nullValue(); return }
+//
+//        out.beginObject()
+//        out.name("@type").value(value::class.java.name)
+//
+//        for (prop in value::class.memberProperties) {
+//            try {
+//                if (prop.name == "Companion" || prop.name == "propertyCache") continue
+//                prop.isAccessible = true
+//                val propValue = prop.getter.call(value)?: continue
+//                out.name(prop.name)
+//                gson.toJson(propValue, propValue.javaClass, out)
+//            } catch (e: Throwable) { continue }
+//        }
+//        out.endObject()
+//    }
+//
+//    override fun read(reader: JsonReader): Any? {
+//        val jsonObj = gson.fromJson<JsonObject>(reader, JsonObject::class.java)
+//        val className = jsonObj.get("@type")?.asString ?: type.name // Fallback to known type
+//
+//        return runCatching {
+//            val kClass = Class.forName(className).kotlin
+//            val instance = kClass.createInstance()
+//
+//            jsonObj.entrySet().forEach { (propName, jsonElement) ->
+//                if (propName == "@type") return@forEach
+//                val prop = kClass.memberProperties.find { it.name == propName }
+//                        as? KMutableProperty1<Any, Any?>
+//                prop?.isAccessible = true
+//                val propType = prop?.returnType?.classifier as? KClass<*>
+//                val propValue = gson.fromJson(jsonElement, propType?.java)
+//                prop?.set(instance, propValue)
+//            }
+//            instance
+//        }.getOrNull()
+//    }
+//}
+
 @AlteraIgnore
 class UniversalTypeAdapterFactory : TypeAdapterFactory {
+
+    private object NullAdapter : TypeAdapter<Any>() {
+        override fun write(out: JsonWriter, value: Any?) = out.nullValue().let { }
+        override fun read(reader: JsonReader): Any? {
+            reader.skipValue()
+            return null
+        }
+    }
+
     override fun <T> create(gson: Gson, type: TypeToken<T>): TypeAdapter<T>? {
-        var rawType = type.rawType
-
-
+        val rawType = type.rawType
 
         if (rawType.isPrimitive ||
+            rawType.isEnum ||
             rawType == String::class.java ||
             rawType == java.lang.Boolean::class.java ||
             rawType == java.lang.Integer::class.java ||
             rawType == java.lang.Long::class.java ||
             rawType == java.lang.Float::class.java ||
             rawType == java.lang.Double::class.java ||
-            rawType == java.lang.Object::class.java||
+            rawType == java.lang.Short::class.java ||
+            rawType == java.lang.Byte::class.java ||
+            rawType == java.lang.Character::class.java ||
+            rawType == java.lang.Object::class.java ||
+            rawType.isArray ||
             List::class.java.isAssignableFrom(rawType) ||
-            Map::class.java.isAssignableFrom(rawType)) {
+            Map::class.java.isAssignableFrom(rawType) ||
+            Set::class.java.isAssignableFrom(rawType)
+        ) {
             return null
         }
 
-        if (rawType.name.startsWith("com.meta.spatial")) {
-            return null
-        }
-
-
+        if (rawType.name.startsWith("com.meta.spatial")) return null
 
         @Suppress("UNCHECKED_CAST")
-        // PASS THE TYPE TO THE ADAPTER
+        if (UniversalReflectionAdapter.isUnserializable(rawType)) return NullAdapter as TypeAdapter<T>
+
+        @Suppress("UNCHECKED_CAST")
         return UniversalReflectionAdapter(gson, rawType) as TypeAdapter<T>
     }
 }
+
+//@AlteraIgnore
+//class UniversalTypeAdapterFactory : TypeAdapterFactory {
+//    override fun <T> create(gson: Gson, type: TypeToken<T>): TypeAdapter<T>? {
+//        var rawType = type.rawType
+//
+//
+//
+//        if (rawType.isPrimitive ||
+//            rawType == String::class.java ||
+//            rawType == java.lang.Boolean::class.java ||
+//            rawType == java.lang.Integer::class.java ||
+//            rawType == java.lang.Long::class.java ||
+//            rawType == java.lang.Float::class.java ||
+//            rawType == java.lang.Double::class.java ||
+//            rawType == java.lang.Object::class.java||
+//            List::class.java.isAssignableFrom(rawType) ||
+//            Map::class.java.isAssignableFrom(rawType)) {
+//            return null
+//        }
+//
+//        if (rawType.name.startsWith("com.meta.spatial")) {
+//            return null
+//        }
+//
+//
+//
+//        @Suppress("UNCHECKED_CAST")
+//        // PASS THE TYPE TO THE ADAPTER
+//        return UniversalReflectionAdapter(gson, rawType) as TypeAdapter<T>
+//    }
+//}
 
 // ADAPTER NOW TAKES Class<*> SO IT KNOWS T
 object AlteraGson {

@@ -11,7 +11,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 26
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -76,7 +76,7 @@ afterEvaluate {
 
                 groupId = "com.digiforce"
                 artifactId = "componentbase-builder"
-                version = "1.1.0"
+                version = "1.1.1"
             }
         }
     }
