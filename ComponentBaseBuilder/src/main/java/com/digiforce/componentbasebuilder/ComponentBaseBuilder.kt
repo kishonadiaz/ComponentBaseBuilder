@@ -1174,10 +1174,11 @@ class UniversalTypeAdapterFactory : TypeAdapterFactory {
 //}
 
 // ADAPTER NOW TAKES Class<*> SO IT KNOWS T
+@AlteraIgnore
 object AlteraGson {
     // HARDCODE YOUR JITPACK PACKAGE - NEVER AUTO-DETECT
     var SDK_PACKAGE: String = "com.digiforce.componentbasebuilder" // <- CHANGE THIS TO YOUR REAL JITPACK ID
-
+    @AlteraIgnore
     class Builder {
         private var skipSdkPackage = true
         private var skipMetaPackage = true
@@ -1192,32 +1193,38 @@ object AlteraGson {
         fun addSkipPackage(pkg: String) = apply { customSkipPackages.add(pkg) }
 
         fun build(): Gson {
-            // NEVER use auto-detect in the default build
-            val activeSdkPackage = SDK_PACKAGE // <- Always use hardcoded
+            try {
 
-            return GsonBuilder()
-                .setExclusionStrategies(object:com.google.gson.ExclusionStrategy {
-                    override fun shouldSkipField(f: FieldAttributes): Boolean {
-                        val declaring = f.declaringClass.name
-                        if (useAnnotations && f.getAnnotation(AlteraIgnore::class.java) != null) return true
-                        if (skipSdkPackage && declaring.startsWith(activeSdkPackage)) return true
-                        if (skipMetaPackage && declaring.startsWith("com.meta.spatial")) return true
-                        return customSkipPackages.any { declaring.startsWith(it) }
-                    }
-                    override fun shouldSkipClass(clazz: Class<*>): Boolean {
-                        val name = clazz.name
-                        if (useAnnotations && clazz.isAnnotationPresent(AlteraIgnore::class.java)) return true
-                        if (skipSdkPackage && name.startsWith(activeSdkPackage)) return true
-                        if (skipMetaPackage && name.startsWith("com.meta.spatial")) return true
-                        return customSkipPackages.any { name.startsWith(it) }
-                    }
-                })
-                .registerTypeAdapterFactory(UniversalTypeAdapterFactory())
-                .create()
+
+                // NEVER use auto-detect in the default build
+                val activeSdkPackage = SDK_PACKAGE // <- Always use hardcoded
+
+                return GsonBuilder()
+                    .setExclusionStrategies(object : com.google.gson.ExclusionStrategy {
+                        override fun shouldSkipField(f: FieldAttributes): Boolean {
+                            val declaring = f.declaringClass.name
+                            if (useAnnotations && f.getAnnotation(AlteraIgnore::class.java) != null) return true
+                            if (skipSdkPackage && declaring.startsWith(activeSdkPackage)) return true
+                            if (skipMetaPackage && declaring.startsWith("com.meta.spatial")) return true
+                            return customSkipPackages.any { declaring.startsWith(it) }
+                        }
+
+                        override fun shouldSkipClass(clazz: Class<*>): Boolean {
+                            val name = clazz.name
+                            if (useAnnotations && clazz.isAnnotationPresent(AlteraIgnore::class.java)) return true
+                            if (skipSdkPackage && name.startsWith(activeSdkPackage)) return true
+                            if (skipMetaPackage && name.startsWith("com.meta.spatial")) return true
+                            return customSkipPackages.any { name.startsWith(it) }
+                        }
+                    })
+                    .registerTypeAdapterFactory(UniversalTypeAdapterFactory())
+                    .create()
+            }finally{}
         }
     }
 
     // THIS IS YOUR JITPACK DEFAULT - SAFE + GREEDY
+    @AlteraIgnore
     val default: Gson by lazy {
         Builder()
             .autoDetectPackage(false) // <- NEVER auto-detect
